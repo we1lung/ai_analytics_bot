@@ -1,0 +1,31 @@
+date,category,product,sales,quantity,customer_age,region,satisfaction
+2026-04-01,Electronics,Smartphone,850.00,2,25,North,4.5
+2026-04-01,Home,Coffee Maker,120.00,1,34,South,4.2
+2026-04-02,Electronics,Laptop,1500.00,1,22,East,4.8
+2026-04-02,Books,Python Guide,45.00,3,29,West,5.0
+2026-04-03,Home,Desk Lamp,35.00,2,45,North,3.8
+2026-04-03,Electronics,Headphones,200.00,1,19,South,4.1
+2026-04-04,Books,Data Science 101,55.00,1,31,East,4.9
+2026-04-04,Home,Office Chair,250.00,1,38,West,4.4
+2026-04-05,Electronics,Smartphone,850.00,1,28,North,4.3
+2026-04-05,Books,Machine Learning,65.00,2,35,South,4.7
+2026-04-06,Home,Curtains,80.00,4,52,East,3.5
+2026-04-06,Electronics,Monitor,300.00,2,26,West,4.6
+2026-04-07,Books,FastAPI Docs,30.00,5,24,North,4.9
+2026-04-07,Electronics,Mouse,25.00,10,30,South,4.0
+2026-04-08,Home,Cactus Pot,15.00,3,27,East,4.2
+2026-04-08,Electronics,Laptop,1500.00,1,41,West,4.7
+2026-04-09,Books,React Patterns,50.00,2,23,North,4.8
+2026-04-09,Home,Blender,90.00,1,36,South,3.9
+2026-04-10,Electronics,Smartphone,850.00,1,32,East,4.4
+2026-04-10,Books,Algorithms,70.00,1,45,West,5.0
+2026-04-11,Home,Towels,40.00,6,50,North,4.1
+2026-04-11,Electronics,Keyboard,100.00,2,21,South,4.5
+2026-04-12,Books,AI Ethics,40.00,1,33,East,4.6
+2026-04-12,Home,Wall Clock,25.00,1,60,West,3.7
+2026-04-13,Electronics,Tablet,400.00,1,29,North,4.3
+2026-04-13,Books,SQL Basics,35.00,4,30,South,4.8
+2026-04-14,Home,Mirror,110.00,1,42,East,4.0
+2026-04-14,Electronics,Smartwatch,150.00,2,25,West,4.2
+2026-04-15,Books,Deep Learning,85.00,1,28,North,4.9
+2026-04-15,Home,Rug,200.00,1,39,South,4.4
