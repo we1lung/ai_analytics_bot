@@ -1,7 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
-
-const API = axios.create({ baseURL: "http://127.0.0.1:8000" });
+import { login, register } from "../api";
 
 export default function Auth() {
   const [mode, setMode] = useState("login"); // login | register
@@ -17,12 +15,9 @@ export default function Auth() {
     setError(null);
 
     try {
-      const url = mode === "login" ? "/auth/login" : "/auth/register";
-      const data = mode === "login"
-        ? { email, password }
-        : { username, email, password };
-
-      const res = await API.post(url, data);
+      const res = mode === "login"
+        ? await login(email, password)
+        : await register(username, email, password);
       
       localStorage.setItem("token", res.data.access_token);
       localStorage.setItem("user", JSON.stringify({
