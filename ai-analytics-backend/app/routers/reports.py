@@ -46,7 +46,8 @@ def build_summary(dataset, df) -> dict:
 
 @router.post("/{dataset_id}/generate")
 def generate(
-    dataset_id: int, 
+    dataset_id: int,
+    lang: str = "ru",
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
@@ -63,7 +64,7 @@ def generate(
     dataset_summary = build_summary(dataset, df)
 
     try:
-        result = generate_report(dataset_summary)
+        result = generate_report(dataset_summary, lang=lang)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка AI: {str(e)}")
 

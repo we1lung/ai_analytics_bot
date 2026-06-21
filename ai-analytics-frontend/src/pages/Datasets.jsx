@@ -103,7 +103,7 @@ export default function Datasets({ onSelect, lang = "ru" }) {
               >
                 🗑️
               </button>
-              <span className="badge">#{d.id}</span>
+              <span className="badge">#{d.display_number}</span>
             </div>
           </div>
         ))

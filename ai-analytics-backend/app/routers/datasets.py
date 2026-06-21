@@ -83,18 +83,28 @@ def get_user_datasets(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Список датасетов текущего пользователя"""
-    datasets = db.query(Dataset).filter(Dataset.user_id == current_user.id).all()
-    
+    """Список датасетов текущего пользователя.
+    display_number — порядковый номер датасета в рамках юзера (1, 2, 3...),
+    пересчитывается на лету по дате создания, поэтому "сбрасывается"
+    после удаления (не зависит от глобального id)."""
+    datasets = (
+        db.query(Dataset)
+        .filter(Dataset.user_id == current_user.id)
+        .order_by(Dataset.created_at)
+        .all()
+    )
+
     return [
         {
             "id": ds.id,
+            "display_number": i + 1,
             "name": ds.name,
             "row_count": ds.row_count,
             "column_count": len(ds.columns) if ds.columns else 0,
+            "columns": ds.columns or [],
             "created_at": ds.created_at,
         }
-        for ds in datasets
+        for i, ds in enumerate(datasets)
     ]
 
 

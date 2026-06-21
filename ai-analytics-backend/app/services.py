@@ -14,6 +14,7 @@ from app.models import Dataset, DatasetData, ChatHistory
 # import pandas as pd  # ← DELETE THIS LINE
 
 load_dotenv()
+print("GROQ KEY LOADED:", bool(os.getenv("GROQ_API_KEY")), os.getenv("GROQ_API_KEY")[:8] if os.getenv("GROQ_API_KEY") else None)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ─────────────────────────────────────────
@@ -201,14 +202,23 @@ def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
 def answer_with_ai(
     user_question: str,
     dataset_summary: dict,
-    chat_history: list,  # история предыдущих сообщений
+    chat_history: list,  # история предыдущих сообщений (первый элемент может быть system от chat.py)
 ) -> str:
     """Отправляет вопрос + историю + summary в Groq"""
 
-    system_prompt = """Ты — AI аналитик данных. Отвечай ТОЛЬКО на русском языке.
-Тебе дают краткое описание датасета и историю разговора.
-Отвечай на вопросы основываясь ТОЛЬКО на данных датасета.
-Отвечай чётко и по делу. Помни контекст предыдущих сообщений."""
+    # Если chat.py уже передал system-сообщение первым элементом (с языковой инструкцией),
+    # используем его. Иначе — fallback на русский по умолчанию.
+    has_system = chat_history and chat_history[0].get("role") == "system"
+    lang_instruction = chat_history[0]["content"] if has_system else (
+        "You are an expert AI data analyst. ALWAYS answer in Russian."
+    )
+    history_rest = chat_history[1:] if has_system else chat_history
+
+    system_prompt = (
+        lang_instruction +
+        "\n\nAnswer questions based ONLY on the dataset data below. "
+        "Be clear and concise. Remember the context of previous messages."
+    )
 
     dataset_context = f"""
 Датасет: {dataset_summary.get('name')}
@@ -223,19 +233,16 @@ def answer_with_ai(
 {format_categories(dataset_summary.get('top_categories', {}))}
 """
 
-    # собираем messages: system + история + новый вопрос
     messages = [
         {"role": "system", "content": system_prompt + "\n\nДанные:\n" + dataset_context}
     ]
 
-    # добавляем последние 10 сообщений из истории (чтобы не перегружать контекст)
-    for msg in chat_history[-10:]:
+    for msg in history_rest[-10:]:
         messages.append({
             "role": msg["role"],
             "content": msg["content"],
         })
 
-    # добавляем текущий вопрос
     messages.append({"role": "user", "content": user_question})
 
     response = client.chat.completions.create(
@@ -270,32 +277,34 @@ def format_categories(categories: dict) -> str:
 
 import json
 
-def generate_report(dataset_summary: dict) -> dict:
+def generate_report(dataset_summary: dict, lang: str = "ru") -> dict:
     """
     Отправляет аналитику в Groq → получает структурированный отчёт в JSON
     """
 
-    system_prompt = """Ты — профессиональный бизнес-аналитик.
-Тебе дают статистику датасета. Твоя задача — сгенерировать бизнес-отчёт.
+    lang_name = "Russian" if lang == "ru" else "English"
+    system_prompt = f"""You are a professional business analyst.
+You are given dataset statistics. Generate a business report.
+ALWAYS write all text content (title, summary, findings, recommendations, risks) in {lang_name}.
 
-Отвечай ТОЛЬКО валидным JSON без markdown и пояснений. Формат:
-{
-  "title": "название отчёта",
-  "summary": "краткий вывод 2-3 предложения",
+Respond ONLY with valid JSON, no markdown, no explanations. Format:
+{{
+  "title": "report title",
+  "summary": "brief 2-3 sentence summary",
   "findings": [
-    "находка 1",
-    "находка 2",
-    "находка 3"
+    "finding 1",
+    "finding 2",
+    "finding 3"
   ],
   "recommendations": [
-    "рекомендация 1",
-    "рекомендация 2"
+    "recommendation 1",
+    "recommendation 2"
   ],
   "risks": [
-    "риск 1",
-    "риск 2"
+    "risk 1",
+    "risk 2"
   ]
-}"""
+}}"""
 
     dataset_context = f"""
 Датасет: {dataset_summary.get('name')}
@@ -413,33 +422,38 @@ def answer_with_sql_raw(question: str, db: Session, dataset_id: int) -> dict:
 def answer_with_ai_explain(question: str, sql_data: dict, dataset_summary: dict, chat_history: list) -> str:
     """AI explains raw SQL results naturally."""
     import json
-    
+
     sql_context = f"""
-📊 SQL Results: {question}
+SQL Results: {question}
 {json.dumps(sql_data['data'], indent=2, ensure_ascii=False)}
 """
-    
-    system_prompt = f"""Ты эксперт по данным. Отвечай ТОЛЬКО на русском языке.
-Объясняй SQL результаты простым языком.
-Используй **жирный текст** для важных чисел и 📊 эмодзи.
-Кратко, по делу, естественно.
 
-Dataset: {dataset_summary['name']} ({dataset_summary['row_count']} строк)
-"""
-    
+    has_system = chat_history and chat_history[0].get("role") == "system"
+    lang_instruction = chat_history[0]["content"] if has_system else (
+        "You are an expert AI data analyst. ALWAYS answer in Russian."
+    )
+    history_rest = chat_history[1:] if has_system else chat_history
+
+    system_prompt = (
+        lang_instruction +
+        "\n\nExplain the SQL results below in plain language. "
+        "Use **bold** for important numbers. Be concise and natural.\n\n"
+        f"Dataset: {dataset_summary['name']} ({dataset_summary['row_count']} rows)\n"
+        f"{sql_context}"
+    )
+
     messages = [{"role": "system", "content": system_prompt}]
-    
-    # Recent chat history (max 6 messages)
-    for msg in chat_history[-6:]:
+
+    for msg in history_rest[-6:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-    
-    messages.append({"role": "user", "content": f"Объясни эти данные простыми словами: {question}"})
-    
+
+    messages.append({"role": "user", "content": question})
+
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=messages,
         max_tokens=400,
         temperature=0.1
     )
-    
+
     return response.choices[0].message.content
