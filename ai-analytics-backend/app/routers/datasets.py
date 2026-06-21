@@ -6,6 +6,7 @@ from app.routers.auth import verify_token
 import pandas as pd
 import tempfile
 from pathlib import Path
+ import math
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
@@ -45,11 +46,18 @@ def upload_csv(
     
     try:
         df = pd.read_csv(tmp_path)
-        # pandas использует NaN для пропусков, а это невалидно в JSON (PostgreSQL JSON-колонка
-        # отклоняет токен NaN). Заменяем на None, что сериализуется в JSON как null.
-        df = df.where(pd.notnull(df), None)
         rows = df.to_dict(orient="records")
         columns = list(df.columns)
+
+        # pandas/json.dumps допускает NaN как нестандартный JSON-литерал, но PostgreSQL
+        # его не принимает. Чистим NaN -> None на уровне самих словарей (после to_dict),
+        # т.к. df.where(...) не помогает для numeric dtype колонок (pandas откатывает None обратно в NaN).
+        def clean_nan(value):
+            if isinstance(value, float) and math.isnan(value):
+                return None
+            return value
+
+        rows = [{k: clean_nan(v) for k, v in row.items()} for row in rows]
         
         dataset = Dataset(
             name=file.filename,
