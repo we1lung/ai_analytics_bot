@@ -45,6 +45,9 @@ def upload_csv(
     
     try:
         df = pd.read_csv(tmp_path)
+        # pandas использует NaN для пропусков, а это невалидно в JSON (PostgreSQL JSON-колонка
+        # отклоняет токен NaN). Заменяем на None, что сериализуется в JSON как null.
+        df = df.where(pd.notnull(df), None)
         rows = df.to_dict(orient="records")
         columns = list(df.columns)
         
