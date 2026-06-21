@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqladmin import Admin, ModelView
-
+import os
 from app.database import get_db, engine, Base
 from app import models
 from app.models import User, Dataset, Report
@@ -32,9 +32,14 @@ admin_panel.add_view(DatasetAdmin)
 admin_panel.add_view(ReportAdmin)
 
 # 4. Настраиваем CORS Middleware
+# CORS_ORIGINS читается из env как список через запятую, например:
+# CORS_ORIGINS=http://localhost:5173,https://your-app.netlify.app
+cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:5173")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
