@@ -1,99 +1,142 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Header
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Dataset, DatasetData, ChatHistory, Report
+from app.models import Dataset, DatasetData, User
+from app.routers.auth import verify_token
 import pandas as pd
-import io
+import tempfile
+from pathlib import Path
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
 
-@router.post("/upload")
-async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
-
-    if not file.filename.endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Только CSV файлы разрешены")
-
-    contents = await file.read()
-
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> User:
+    """Получает текущего пользователя из стандартного заголовка Authorization"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="No token provided")
+    
     try:
-        df = pd.read_csv(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Ошибка чтения CSV: {str(e)}")
+        token_type, token = authorization.split(" ")
+        if token_type.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        user_id = verify_token(token)
+    except:
+        raise HTTPException(status_code=401, detail="Invalid token")
+        
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return user
 
-    dataset = Dataset(
-        name=file.filename,
-        columns=list(df.columns),
-        row_count=len(df),
-    )
-    db.add(dataset)
-    db.commit()
-    db.refresh(dataset)
 
-    rows = []
-    for index, row in df.iterrows():
-        rows.append(DatasetData(
-            dataset_id=dataset.id,
-            row_index=index,
-            row_data=row.fillna("").to_dict(),
-        ))
-
-    db.bulk_save_objects(rows)
-    db.commit()
-
-    return {
-        "status": "ok",
-        "dataset_id": dataset.id,
-        "file_name": dataset.name,
-        "columns": dataset.columns,
-        "row_count": dataset.row_count,
-    }
+@router.post("/upload")
+def upload_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Загружает CSV файл"""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        content = file.file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    
+    try:
+        df = pd.read_csv(tmp_path)
+        rows = df.to_dict(orient="records")
+        columns = list(df.columns)
+        
+        dataset = Dataset(
+            name=file.filename,
+            row_count=len(df),
+            columns=columns,
+            user_id=current_user.id,
+        )
+        db.add(dataset)
+        db.flush()
+        
+        for idx, row in enumerate(rows):
+            dataset_data = DatasetData(
+                dataset_id=dataset.id,
+                row_index=idx,
+                row_data=row,
+            )
+            db.add(dataset_data)
+        
+        db.commit()
+        db.refresh(dataset)
+        
+        return {
+            "id": dataset.id,
+            "name": dataset.name,
+            "row_count": len(df),
+            "columns": columns,
+        }
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 @router.get("/")
-def get_all_datasets(db: Session = Depends(get_db)):
-    datasets = db.query(Dataset).all()
+def get_user_datasets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Список датасетов текущего пользователя"""
+    datasets = db.query(Dataset).filter(Dataset.user_id == current_user.id).all()
+    
     return [
         {
-            "id": d.id,
-            "name": d.name,
-            "columns": d.columns,
-            "row_count": d.row_count,
-            "created_at": d.created_at,
+            "id": ds.id,
+            "name": ds.name,
+            "row_count": ds.row_count,
+            "column_count": len(ds.columns) if ds.columns else 0,
+            "created_at": ds.created_at,
         }
-        for d in datasets
+        for ds in datasets
     ]
 
 
 @router.get("/{dataset_id}")
-def get_dataset(dataset_id: int, db: Session = Depends(get_db)):
-    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+def get_dataset(
+    dataset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Информация о датасете (только если твой)"""
+    dataset = db.query(Dataset).filter(
+        (Dataset.id == dataset_id) & (Dataset.user_id == current_user.id)
+    ).first()
+    
     if not dataset:
-        raise HTTPException(status_code=404, detail="Датасет не найден")
-
-    rows = db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).all()
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
     return {
         "id": dataset.id,
         "name": dataset.name,
-        "columns": dataset.columns,
         "row_count": dataset.row_count,
-        "created_at": dataset.created_at,
-        "data": [r.row_data for r in rows],
+        "column_count": len(dataset.columns) if dataset.columns else 0,
+        "columns": dataset.columns,
     }
 
 
 @router.delete("/{dataset_id}")
-async def delete_dataset(dataset_id: int, db: Session = Depends(get_db)):
-    db_dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
-    if not db_dataset:
-        raise HTTPException(status_code=404, detail="Датасет не найден")
-    try:
-        db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).delete()
-        db.query(ChatHistory).filter(ChatHistory.dataset_id == dataset_id).delete()
-        db.query(Report).filter(Report.dataset_id == dataset_id).delete()
-        db.delete(db_dataset)
-        db.commit()
-        return {"status": "ok"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+def delete_dataset(
+    dataset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Удаляет датасет (только свой)"""
+    dataset = db.query(Dataset).filter(
+        (Dataset.id == dataset_id) & (Dataset.user_id == current_user.id)
+    ).first()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).delete()
+    db.delete(dataset)
+    db.commit()
+    
+    return {"message": "Deleted"}

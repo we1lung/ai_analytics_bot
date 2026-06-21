@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Dataset, DatasetData, Report
-from app.services import generate_report, format_averages, format_categories, format_missing
+from app.models import Dataset, DatasetData, Report, User
+from app.routers.datasets import get_current_user
+from app.services import generate_report
 import pandas as pd
 import os
 from fpdf import FPDF
@@ -14,9 +15,7 @@ FONT_BOLD    = os.path.join(BASE_DIR, "fonts", "DejaVuSans-Bold.ttf")
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
-
 def build_summary(dataset, df) -> dict:
-    """Собирает summary датасета для передачи в AI"""
     averages = {}
     for col in df.select_dtypes(include="number").columns:
         averages[col] = {
@@ -24,12 +23,10 @@ def build_summary(dataset, df) -> dict:
             "min":  round(float(df[col].min()), 2),
             "max":  round(float(df[col].max()), 2),
         }
-
     categories = {}
     for col in df.select_dtypes(include="object").columns:
         top = df[col].value_counts().head(5)
         categories[col] = [{"value": str(v), "count": int(c)} for v, c in top.items()]
-
     missing = {}
     for col in df.columns:
         cnt = int(df[col].isnull().sum())
@@ -37,7 +34,6 @@ def build_summary(dataset, df) -> dict:
             "missing_count": cnt,
             "missing_percent": round(cnt / len(df) * 100, 2),
         }
-
     return {
         "name": dataset.name,
         "row_count": dataset.row_count,
@@ -48,14 +44,16 @@ def build_summary(dataset, df) -> dict:
         "missing_values": missing,
     }
 
-
 @router.post("/{dataset_id}/generate")
-def generate(dataset_id: int, db: Session = Depends(get_db)):
-    """Генерирует AI отчёт и сохраняет в БД"""
-
-    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+def generate(
+    dataset_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # Проверка владельца датасета
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
     if not dataset:
-        raise HTTPException(status_code=404, detail="Датасет не найден")
+        raise HTTPException(status_code=404, detail="Датасет не найден или доступ ограничен")
 
     rows = db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).all()
     if not rows:
@@ -92,10 +90,17 @@ def generate(dataset_id: int, db: Session = Depends(get_db)):
         "created_at": report.created_at,
     }
 
-
 @router.get("/{dataset_id}")
-def get_reports(dataset_id: int, db: Session = Depends(get_db)):
-    """Список всех отчётов по датасету"""
+def get_reports(
+    dataset_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # Проверка прав доступа к списку отчётов
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Датасет не найден или доступ ограничен")
+
     reports = (
         db.query(Report)
         .filter(Report.dataset_id == dataset_id)
@@ -115,24 +120,28 @@ def get_reports(dataset_id: int, db: Session = Depends(get_db)):
         for r in reports
     ]
 
-
 @router.get("/{dataset_id}/{report_id}/download/pdf")
-def download_pdf(dataset_id: int, report_id: int, db: Session = Depends(get_db)):
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.dataset_id == dataset_id
-    ).first()
+def download_pdf(
+    dataset_id: int, 
+    report_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # Проверка связи датасета с текущим пользователем
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Доступ запрещен")
+
+    report = db.query(Report).filter(Report.id == report_id, Report.dataset_id == dataset_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
 
     pdf = FPDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
-
     pdf.add_font("DejaVu", "", FONT_REGULAR)
     pdf.add_font("DejaVu", "B", FONT_BOLD)
 
-    # заголовок
     pdf.set_font("DejaVu", "B", 18)
     pdf.cell(0, 12, report.title, ln=True, align="C")
     pdf.ln(4)
@@ -172,14 +181,17 @@ def download_pdf(dataset_id: int, report_id: int, db: Session = Depends(get_db))
     return FileResponse(path, media_type="application/pdf", filename=f"report_{report_id}.pdf")
 
 @router.get("/{dataset_id}/{report_id}/download/txt")
-def download_txt(dataset_id: int, report_id: int, db: Session = Depends(get_db)):
-    """Скачивает отчёт в формате .txt"""
+def download_txt(
+    dataset_id: int, 
+    report_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Доступ запрещен")
 
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.dataset_id == dataset_id
-    ).first()
-
+    report = db.query(Report).filter(Report.id == report_id, Report.dataset_id == dataset_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
 
@@ -212,20 +224,23 @@ def download_txt(dataset_id: int, report_id: int, db: Session = Depends(get_db))
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    return FileResponse(
-        path,
-        media_type="text/plain",
-        filename=f"report_{report_id}.txt",
-    )
+    return FileResponse(path, media_type="text/plain", filename=f"report_{report_id}.txt")
 
 @router.delete("/{dataset_id}/{report_id}")
-def delete_report(dataset_id: int, report_id: int, db: Session = Depends(get_db)):
-    report = db.query(Report).filter(
-        Report.id == report_id,
-        Report.dataset_id == dataset_id
-    ).first()
+def delete_report(
+    dataset_id: int, 
+    report_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Доступ запрещен")
+
+    report = db.query(Report).filter(Report.id == report_id, Report.dataset_id == dataset_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
+        
     db.delete(report)
     db.commit()
     return {"message": "Удалён"}

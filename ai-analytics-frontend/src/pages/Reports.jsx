@@ -1,7 +1,46 @@
 import { useEffect, useState } from "react";
 import { generateReport, getReports, downloadReportPDF, downloadReportTXT, deleteReport } from "../api";
 
-export default function Reports({ dataset }) {
+const t = {
+  ru: {
+    selectDataset: "Выбери датасет из списка",
+    title: "Отчёты:",
+    btnCreate: "Создать отчёт",
+    btnCreating: "Генерирую...",
+    aiAnalyzing: "AI анализирует данные... подожди 10-20 секунд",
+    errorDelete: "Ошибка при удалении отчёта",
+    errorGenerate: "Ошибка генерации",
+    errorDownload: "Ошибка скачивания",
+    confirmDelete: "Удалить этот отчёт?",
+    noReports: "Нет отчётов",
+    btnDelete: "Удалить",
+    btnDownloadTxt: "Скачать TXT",
+    btnDownloadPdf: "Скачать PDF",
+    selectReport: "Выбери отчёт из списка или создай новый",
+    dateLocale: "ru-RU"
+  },
+  en: {
+    selectDataset: "Select a dataset from the list",
+    title: "Reports:",
+    btnCreate: "Create Report",
+    btnCreating: "Generating...",
+    aiAnalyzing: "AI is analyzing data... please wait 10-20 seconds",
+    errorDelete: "Error deleting report",
+    errorGenerate: "Generation failed",
+    errorDownload: "Download failed",
+    confirmDelete: "Delete this report?",
+    noReports: "No reports found",
+    btnDelete: "Delete",
+    btnDownloadTxt: "Download TXT",
+    btnDownloadPdf: "Download PDF",
+    selectReport: "Select a report from the list or create a new one",
+    dateLocale: "en-US"
+  }
+};
+
+export default function Reports({ dataset, lang = "ru" }) {
+  const currentText = t[lang] || t.ru;
+
   const [reports, setReports]   = useState([]);
   const [loading, setLoading]   = useState(false);
   const [generating, setGen]    = useState(false);
@@ -23,13 +62,13 @@ export default function Reports({ dataset }) {
 
   const handleDelete = async (e, reportId) => {
     e.stopPropagation();
-    if (!window.confirm("Удалить этот отчёт?")) return;
+    if (!window.confirm(currentText.confirmDelete)) return;
     try {
       await deleteReport(dataset.id, reportId);
       setReports((prev) => prev.filter((r) => r.report_id !== reportId));
       if (selected?.report_id === reportId) setSelected(null);
     } catch {
-      setError("Ошибка при удалении отчёта");
+      setError(currentText.errorDelete);
     }
   };
 
@@ -37,11 +76,12 @@ export default function Reports({ dataset }) {
     setGen(true);
     setError(null);
     try {
-      const r = await generateReport(dataset.id);
+      // Передаем текущий язык lang вторым аргументом API-функции
+      const r = await generateReport(dataset.id, lang);
       setReports((prev) => [r.data, ...prev]);
       setSelected(r.data);
     } catch (e) {
-      setError(e.response?.data?.detail || "Ошибка генерации");
+      setError(e.response?.data?.detail || currentText.errorGenerate);
     } finally {
       setGen(false);
     }
@@ -58,22 +98,22 @@ export default function Reports({ dataset }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setError("Ошибка скачивания");
+      setError(currentText.errorDownload);
     }
   };
 
-  if (!dataset) return <div className="empty">Выбери датасет из списка</div>;
+  if (!dataset) return <div className="empty">{currentText.selectDataset}</div>;
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1>Отчёты: {dataset.name}</h1>
+        <h1>{currentText.title} {dataset.name}</h1>
         <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
-          {generating ? "Генерирую..." : "Создать отчёт"}
+          {generating ? currentText.btnCreating : currentText.btnCreate}
         </button>
       </div>
 
-      {generating && <div className="alert alert-success">AI анализирует данные... подожди 10-20 секунд</div>}
+      {generating && <div className="alert alert-success">{currentText.aiAnalyzing}</div>}
       {error && <div className="alert alert-error">{error}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 20 }}>
@@ -82,7 +122,7 @@ export default function Reports({ dataset }) {
         <div>
           {loading && <div className="spinner" />}
           {reports.length === 0 && !loading && (
-            <div className="empty" style={{ padding: 20 }}>Нет отчётов</div>
+            <div className="empty" style={{ padding: 20 }}>{currentText.noReports}</div>
           )}
           {reports.map((r) => (
             <div
@@ -91,9 +131,11 @@ export default function Reports({ dataset }) {
               onClick={() => setSelected(r)}
             >
               <div className="rc-title">{r.title}</div>
-              <div className="rc-date">{new Date(r.created_at).toLocaleString("ru-RU")}</div>
+              <div className="rc-date">
+                {new Date(r.created_at).toLocaleString(currentText.dateLocale)}
+              </div>
               <button className="rc-del" onClick={(e) => handleDelete(e, r.report_id)}>
-                Удалить
+                {currentText.btnDelete}
               </button>
             </div>
           ))}
@@ -105,8 +147,8 @@ export default function Reports({ dataset }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <h2 style={{ fontSize: 18, fontWeight: 600 }}>{selected.title}</h2>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-ghost" onClick={() => handleDownload("txt")}>Скачать TXT</button>
-                <button className="btn btn-primary" onClick={() => handleDownload("pdf")}>Скачать PDF</button>
+                <button className="btn btn-ghost" onClick={() => handleDownload("txt")}>{currentText.btnDownloadTxt}</button>
+                <button className="btn btn-primary" onClick={() => handleDownload("pdf")}>{currentText.btnDownloadPdf}</button>
               </div>
             </div>
 
@@ -146,7 +188,7 @@ export default function Reports({ dataset }) {
             </div>
           </div>
         ) : (
-          <div className="empty">Выбери отчёт из списка или создай новый</div>
+          <div className="empty">{currentText.selectReport}</div>
         )}
       </div>
     </div>

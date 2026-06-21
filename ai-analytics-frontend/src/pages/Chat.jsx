@@ -1,115 +1,145 @@
-import { useEffect, useRef, useState } from "react";
-import { sendMessage, getChatHistory, clearHistory } from "../api";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useState, useEffect, useRef } from "react";
+import { sendMessage, getChatHistory, clearChatHistory } from "../api";
 
-export default function Chat({ dataset }) {
+const t = {
+  ru: {
+    selectDataset: "Выбери датасет из списка, чтобы начать чат",
+    clearBtn: "Очистить историю",
+    inputPlaceholder: "Задай вопрос о данных...",
+    sendBtn: "Отправить",
+    errorLoad: "Ошибка при загрузке истории чата",
+    errorSend: "Ошибка при отправке сообщения"
+  },
+  en: {
+    selectDataset: "Select a dataset from the list to start a chat",
+    clearBtn: "Clear History",
+    inputPlaceholder: "Ask a question about data...",
+    sendBtn: "Send",
+    errorLoad: "Error loading chat history",
+    errorSend: "Error sending message"
+  }
+};
+
+export default function Chat({ dataset, lang = "ru" }) {
+  const currentText = t[lang] || t.ru;
+
   const [messages, setMessages] = useState([]);
-  const [input, setInput]       = useState("");
-  const [loading, setLoading]   = useState(false);
-  const bottomRef               = useRef(null);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const chatEndRef = useRef(null);
 
-  // загружаем историю при открытии
   useEffect(() => {
     if (!dataset) return;
-    getChatHistory(dataset.id)
-      .then((r) => setMessages(r.data))
-      .catch(console.error);
+    loadHistory();
   }, [dataset]);
 
-  // автоскролл вниз
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-    const question = input.trim();
-    setInput("");
+  const loadHistory = async () => {
+    try {
+      const res = await getChatHistory(dataset.id);
 
-    // сразу показываем вопрос пользователя
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+      console.log("CHAT HISTORY:", res.data);
+
+      if (Array.isArray(res.data)) {
+        setMessages(res.data);
+      } else if (Array.isArray(res.data.messages)) {
+        setMessages(res.data.messages);
+      } else if (Array.isArray(res.data.history)) {
+        setMessages(res.data.history);
+      } else {
+        setMessages([]);
+        console.error("Unexpected chat history format:", res.data);
+      }
+
+      setError(null);
+    } catch {
+      setError(currentText.errorLoad);
+    }
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userMsg = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
     setLoading(true);
+    setError(null);
 
     try {
-      const res = await sendMessage(dataset.id, question);
+      // 🚀 Передаем lang на бэкенд, чтобы ИИ отвечал на выбранном языке
+      const res = await sendMessage(dataset.id, input, lang);
       setMessages((prev) => [
         ...prev,
-        {
-          role: "assistant",
-          content: res.data.answer,
-          answered_by: res.data.answered_by,
-        },
+        { role: "assistant", content: res.data.answer }
       ]);
-    } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Ошибка: " + (e.response?.data?.detail || "неизвестная ошибка") },
-      ]);
+    } catch {
+      setError(currentText.errorSend);
     } finally {
       setLoading(false);
     }
   };
 
   const handleClear = async () => {
-    await clearHistory(dataset.id);
-    setMessages([]);
+    if (!window.confirm(lang === "ru" ? "Очистить историю чата?" : "Clear chat history?")) return;
+    try {
+      await clearChatHistory(dataset.id);
+      setMessages([]);
+      setError(null);
+    } catch {
+      setError(lang === "ru" ? "Не удалось очистить историю" : "Failed to clear history");
+    }
   };
 
-  if (!dataset) return <div className="empty">Выбери датасет из списка</div>;
+  if (!dataset) return <div className="empty">{currentText.selectDataset}</div>;
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1>Чат: {dataset.name}</h1>
-        <button className="btn btn-ghost" onClick={handleClear}>Очистить историю</button>
+    <div className="chat-container" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 40px)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2>Chat: {dataset.name}</h2>
+        {messages.length > 0 && (
+          <button className="btn btn-ghost" onClick={handleClear}>
+            {currentText.clearBtn}
+          </button>
+        )}
       </div>
 
-      <div className="chat-box">
-        {messages.length === 0 && (
-          <div className="empty">Задай вопрос по данным</div>
-        )}
+      {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
 
-        {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-                <div className="msg-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {m.content}
-                </ReactMarkdown>
-                </div>
-
-                {m.answered_by && (
-                <div className="msg-meta">отвечено через {m.answered_by}</div>
-                )}
+      <div className="chat-box" style={{ flex: 1 }}>
+        {messages.map((msg, i) => (
+          <div key={i} className={`msg ${msg.role === "user" ? "user" : "assistant"}`}>
+            <div className="msg-content">
+              <p style={{ whiteSpace: "pre-line" }}>{msg.content}</p>
             </div>
+            {msg.role === "assistant" && <div className="msg-meta">answered via ai</div>}
+          </div>
         ))}
-
         {loading && (
-          <div className="msg assistant" style={{ color: "#9ca3af" }}>
-            Думаю...
+          <div className="msg assistant">
+            <div className="spinner" style={{ margin: 0, width: 18, height: 18 }} />
           </div>
         )}
-
-        <div ref={bottomRef} />
+        <div ref={chatEndRef} />
       </div>
 
-      <div className="chat-input-row">
+      <form onSubmit={handleSend} className="chat-input-row">
         <input
           type="text"
-          placeholder="Задай вопрос по данным..."
+          placeholder={currentText.inputPlaceholder}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           disabled={loading}
         />
-        <button
-          className="btn btn-primary"
-          onClick={handleSend}
-          disabled={!input.trim() || loading}
-        >
-          Отправить
+        <button type="submit" className="btn btn-primary" disabled={loading || !input.trim()}>
+          {currentText.sendBtn}
         </button>
-      </div>
+      </form>
     </div>
   );
 }

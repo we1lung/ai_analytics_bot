@@ -1,8 +1,21 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    role = Column(String, default="user")  # "user" или "admin"
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    datasets = relationship("Dataset", back_populates="user")
 
 class Dataset(Base):
     __tablename__ = "datasets"
@@ -18,6 +31,8 @@ class Dataset(Base):
     data = relationship("DatasetData", back_populates="dataset", cascade="all, delete")
     history = relationship("ChatHistory", cascade="all, delete")
     reports = relationship("Report", cascade="all, delete")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user = relationship("User", back_populates="datasets")
 
 
 class DatasetData(Base):
@@ -38,6 +53,7 @@ class ChatHistory(Base):
     content = Column(Text, nullable=False)
     answer_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
 class Report(Base):
@@ -50,4 +66,14 @@ class Report(Base):
     recommendations = Column(JSON, nullable=True)  # рекомендации
     risks = Column(JSON, nullable=True)            # риски
     raw_text = Column(Text, nullable=True)         # полный текст от AI
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String, nullable=False)  # "user" или "assistant"
+    content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

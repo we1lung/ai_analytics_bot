@@ -1,7 +1,29 @@
 import { useEffect, useState } from "react";
-import { getDatasets, deleteDataset } from "../api"; // 1. Добавили импорт
+import { getDatasets, deleteDataset } from "../api";
 
-export default function Datasets({ onSelect }) {
+const t = {
+  ru: {
+    title: "Датасеты",
+    empty: "Нет загруженных датасетов. Загрузи CSV сначала.",
+    confirmDelete: "Удалить этот датасет?",
+    errorPrefix: "Ошибка: ",
+    rows: "строк",
+    columns: "колонок",
+    dateLocale: "ru-RU"
+  },
+  en: {
+    title: "Datasets",
+    empty: "No datasets uploaded yet. Please upload a CSV first.",
+    confirmDelete: "Are you sure you want to delete this dataset?",
+    errorPrefix: "Error: ",
+    rows: "rows",
+    columns: "columns",
+    dateLocale: "en-US"
+  }
+};
+
+export default function Datasets({ onSelect, lang = "ru" }) {
+  const currentText = t[lang] || t.ru;
   const [datasets, setDatasets] = useState([]);
   const [loading, setLoading]   = useState(true);
 
@@ -16,25 +38,22 @@ export default function Datasets({ onSelect }) {
       .finally(() => setLoading(false));
   };
 
-  // 2. Функция удаления
   const handleDelete = async (e, id) => {
     e.stopPropagation();
-    if (!window.confirm("Удалить этот датасет?")) return;
+    if (!window.confirm(currentText.confirmDelete)) return;
 
-    console.log("Попытка удалить ID:", id); // Проверим, передается ли ID
+    console.log("Попытка удалить ID:", id);
 
     try {
       const response = await deleteDataset(id);
       console.log("Ответ сервера:", response.data);
       
-      // Обновляем список локально
       setDatasets(prev => prev.filter(d => d.id !== id));
     } catch (err) {
-      // ВЫВОДИМ РЕАЛЬНУЮ ОШИБКУ В КОНСОЛЬ
       console.error("ПОЛНАЯ ОШИБКА:", err);
       console.error("ДЕТАЛИ ОТВЕТА:", err.response?.data);
       
-      alert(`Ошибка: ${err.response?.data?.detail || err.message}`);
+      alert(`${currentText.errorPrefix}${err.response?.data?.detail || err.message}`);
     }
   };
 
@@ -42,23 +61,23 @@ export default function Datasets({ onSelect }) {
 
   return (
     <div>
-      <h1>Датасеты</h1>
+      <h1>{currentText.title}</h1>
 
       {datasets.length === 0 ? (
-        <div className="empty">Нет загруженных датасетов. Загрузи CSV сначала.</div>
+        <div className="empty">{currentText.empty}</div>
       ) : (
         datasets.map((d) => (
           <div
             key={d.id}
             className="dataset-item"
             onClick={() => onSelect(d)}
-            style={{ position: 'relative' }} // Нужно для позиционирования кнопки
+            style={{ position: 'relative' }}
           >
             <div>
               <div className="ds-name">{d.name}</div>
               <div className="ds-meta">
-                {d.row_count} строк · {d.columns?.length} колонок ·{" "}
-                {new Date(d.created_at).toLocaleDateString("ru-RU")}
+                {d.row_count} {currentText.rows} · {d.columns?.length} {currentText.columns} ·{" "}
+                {new Date(d.created_at).toLocaleDateString(currentText.dateLocale)}
               </div>
               <div style={{ marginTop: 6 }}>
                 {d.columns?.slice(0, 5).map((col) => (
@@ -70,7 +89,6 @@ export default function Datasets({ onSelect }) {
               </div>
             </div>
             
-            {/* 3. Кнопка удаления */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
               <button 
                 onClick={(e) => handleDelete(e, d.id)}

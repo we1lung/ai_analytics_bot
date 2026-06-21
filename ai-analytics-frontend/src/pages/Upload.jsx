@@ -3,18 +3,51 @@ import axios from "axios";
 
 const API_URL = "http://127.0.0.1:8000";
 
-export default function Upload({ onUploaded }) {
-  const [file, setFile]         = useState(null);
+// Текстовые переводы без изменения структуры
+const t = {
+  ru: {
+    title: "Загрузить датасет",
+    dragText: "Перетащи файл",
+    clickText: "или нажми для выбора",
+    formats: "CSV, TXT или PDF",
+    uploadingLabel: "Загрузка...",
+    successAlert: "✅ Файл загружен! Переходим к датасетам...",
+    btnUpload: "Загрузить",
+    btnUploading: "Загружаю...",
+    validationError: "Только файлы следующих форматов: ",
+    defaultError: "Ошибка загрузки"
+  },
+  en: {
+    title: "Upload Dataset",
+    dragText: "Drag & drop a file here",
+    clickText: "or click to select",
+    formats: "CSV, TXT or PDF",
+    uploadingLabel: "Uploading...",
+    successAlert: "✅ File uploaded! Moving to datasets...",
+    btnUpload: "Upload",
+    btnUploading: "Uploading...",
+    validationError: "Only the following formats are allowed: ",
+    defaultError: "Upload failed"
+  }
+};
+
+export default function Upload({ onUploaded, lang = "ru" }) {
+  const currentText = t[lang] || t.ru;
+
+  const [file, setFile] = useState(null);
   const [progress, setProgress] = useState(0);
-  const [status, setStatus]     = useState(null); // "uploading" | "success" | "error"
-  const [error, setError]       = useState(null);
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState(null);
   const [dragOver, setDragOver] = useState(false);
-  const inputRef                = useRef();
+  const inputRef = useRef();
+
+  const ALLOWED = [".csv", ".txt", ".pdf"];
 
   const handleFile = (f) => {
     if (!f) return;
-    if (!f.name.endsWith(".csv")) {
-      setError("Только .csv файлы");
+    const ext = f.name.toLowerCase().slice(f.name.lastIndexOf("."));
+    if (!ALLOWED.includes(ext)) {
+      setError(`${currentText.validationError}${ALLOWED.join(", ")}`);
       return;
     }
     setFile(f);
@@ -39,7 +72,9 @@ export default function Upload({ onUploaded }) {
     setError(null);
 
     try {
+      const token = localStorage.getItem("token");
       await axios.post(`${API_URL}/datasets/upload`, form, {
+        headers: { Authorization: `Bearer ${token}` },
         onUploadProgress: (e) => {
           const pct = Math.round((e.loaded * 100) / (e.total || 1));
           setProgress(pct);
@@ -50,15 +85,14 @@ export default function Upload({ onUploaded }) {
       setTimeout(() => onUploaded(), 800);
     } catch (e) {
       setStatus("error");
-      setError(e.response?.data?.detail || "Ошибка загрузки");
+      setError(e.response?.data?.detail || currentText.defaultError);
     }
   };
 
   return (
     <div>
-      <h1>Загрузить CSV</h1>
+      <h1>{currentText.title}</h1>
 
-      {/* Зона drag & drop */}
       <div
         className={`upload-zone ${dragOver ? "drag-over" : ""}`}
         onClick={() => inputRef.current.click()}
@@ -74,44 +108,40 @@ export default function Upload({ onUploaded }) {
           </>
         ) : (
           <>
-            <p><strong>Перетащи CSV</strong> или нажми для выбора</p>
-            <p style={{ marginTop: 6, fontSize: 12 }}>Поддерживается только формат .csv</p>
+            <p><strong>{currentText.dragText}</strong> {currentText.clickText}</p>
+            <p style={{ marginTop: 6, fontSize: 12 }}>{currentText.formats}</p>
           </>
         )}
         <input
           ref={inputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,.txt,.pdf"
           style={{ display: "none" }}
           onChange={(e) => handleFile(e.target.files[0])}
         />
       </div>
 
-      {/* Прогресс-бар */}
       {status === "uploading" && (
         <div style={{ marginTop: 16 }}>
           <div className="progress-wrap">
             <div className="progress-bar" style={{ width: `${progress}%` }} />
           </div>
-          <div className="progress-label">Загрузка... {progress}%</div>
+          <div className="progress-label">{currentText.uploadingLabel} {progress}%</div>
         </div>
       )}
 
-      {/* Успех */}
       {status === "success" && (
         <div className="alert alert-success" style={{ marginTop: 16 }}>
-          ✅ Файл загружен! Переходим к датасетам...
+          {currentText.successAlert}
         </div>
       )}
 
-      {/* Ошибка */}
       {error && (
         <div className="alert alert-error" style={{ marginTop: 16 }}>
           {error}
         </div>
       )}
 
-      {/* Кнопка */}
       {file && status !== "success" && (
         <button
           className="btn btn-primary"
@@ -119,7 +149,7 @@ export default function Upload({ onUploaded }) {
           onClick={handleUpload}
           disabled={status === "uploading"}
         >
-          {status === "uploading" ? `Загружаю... ${progress}%` : "Загрузить"}
+          {status === "uploading" ? `${currentText.btnUploading} ${progress}%` : currentText.btnUpload}
         </button>
       )}
     </div>
