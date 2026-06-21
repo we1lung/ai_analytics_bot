@@ -36,9 +36,9 @@ body {
 }
 
 /* ── Лэйаут ── */
-.layout { 
-  display: flex; 
-  min-height: 100vh; 
+.layout {
+  display: flex;
+  min-height: 100dvh;
   width: 100%;
 }
 
@@ -59,7 +59,7 @@ body {
   flex-shrink: 0;
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
 }
 
@@ -136,9 +136,9 @@ body {
 .main {
   flex: 1;
   padding: 32px 48px;
-  max-width: 1400px;
   width: 100%;
-  margin: 0 auto;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 h1 { font-size: 22px; font-weight: 600; margin-bottom: 24px; color: var(--text); }
@@ -517,7 +517,7 @@ input[type="text"]:focus, textarea:focus { border-color: var(--primary); }
     position: fixed;
     top: 0;
     left: 0;
-    height: 100vh;
+    height: 100dvh;
     width: 260px;
     z-index: 1000;
     transform: translateX(-100%);
