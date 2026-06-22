@@ -176,7 +176,8 @@ def answer_with_ai(
     system_prompt = (
         lang_instruction +
         "\n\nAnswer questions based ONLY on the dataset data below. "
-        "Be clear and concise. Remember the context of previous messages."
+        "Be clear and concise. Remember the context of previous messages. "
+        "NEVER use Chinese, Japanese, or any other language characters. Only use the detected language."
     )
 
     dataset_context = f"""
@@ -406,7 +407,8 @@ SQL Results: {question}
     system_prompt = (
         lang_instruction +
         "\n\nExplain the SQL results below in plain language. "
-        "Use **bold** for important numbers. Be concise and natural.\n\n"
+        "Use **bold** for important numbers. Be concise and natural. "
+        "NEVER use Chinese, Japanese, or any other language characters. Only use the detected language.\n\n"
         f"Dataset: {dataset_summary['name']} ({dataset_summary['row_count']} rows)\n"
         f"{sql_context}"
     )
