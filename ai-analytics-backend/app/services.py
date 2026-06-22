@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import Dataset, DatasetData, ChatHistory
 
 load_dotenv()
-print("GROQ KEY LOADED:", bool(os.getenv("GROQ_API_KEY")), os.getenv(
-    "GROQ_API_KEY")[:8] if os.getenv("GROQ_API_KEY") else None)
+print("GROQ KEY LOADED:", bool(os.getenv("GROQ_API_KEY")), os.getenv("GROQ_API_KEY")[:8] if os.getenv("GROQ_API_KEY") else None)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 SQL_KEYWORDS = [
@@ -63,13 +62,11 @@ def should_use_sql(question: str) -> bool:
 
 def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
     q = question.lower()
-
     dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
     columns = dataset.columns or []
 
     if any(kw in q for kw in ["сколько строк", "count", "количество строк"]):
-        row_count = db.query(DatasetData).filter(
-            DatasetData.dataset_id == dataset_id).count()
+        row_count = db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).count()
         return f"В датасете **{row_count} строк**."
 
     if any(kw in q for kw in ["сколько колонок", "количество колонок"]):
@@ -80,15 +77,13 @@ def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
         for col in columns:
             result = db.execute(text("""
                 SELECT COUNT(*) as null_count
-                FROM dataset_data 
+                FROM dataset_data
                 WHERE dataset_id = :dataset_id AND row_data->>:col IS NULL OR row_data->>:col = ''
             """), {"dataset_id": dataset_id, "col": col}).scalar()
-
             if result > 0:
                 missing_lines.append(f"`{col}`: **{result}** пропусков")
-
         if not missing_lines:
-            return "✅ **Пропущенных значений нет** во всех колонках."
+            return "Пропущенных значений нет во всех колонках."
         return "Пропуски:\n" + "\n".join(missing_lines)
 
     if any(kw in q for kw in ["уникальные", "unique"]):
@@ -96,7 +91,7 @@ def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
         for col in columns[:5]:
             result = db.execute(text("""
                 SELECT COUNT(DISTINCT row_data->>:col) as unique_count
-                FROM dataset_data 
+                FROM dataset_data
                 WHERE dataset_id = :dataset_id AND row_data->>:col IS NOT NULL
             """), {"dataset_id": dataset_id, "col": col}).scalar()
             lines.append(f"`{col}`: **{result}** уникальных")
@@ -107,32 +102,30 @@ def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
         for col in columns[:3]:
             result = db.execute(text("""
                 SELECT row_data->>:col as value, COUNT(*) as cnt
-                FROM dataset_data 
+                FROM dataset_data
                 WHERE dataset_id = :dataset_id AND row_data->>:col IS NOT NULL
-                GROUP BY row_data->>:col 
-                ORDER BY cnt DESC 
+                GROUP BY row_data->>:col
+                ORDER BY cnt DESC
                 LIMIT 3
             """), {"dataset_id": dataset_id, "col": col}).fetchall()
-
             if result:
                 vals = ", ".join([f"{r.value}({r.cnt})" for r in result])
                 lines.append(f"`{col}`: {vals}")
-        return "🏆 Топ значения:\n" + "\n".join(lines)
+        return "Топ значения:\n" + "\n".join(lines)
 
     numeric_results = {}
     for col in columns:
         try:
             agg = db.execute(text("""
-                SELECT 
+                SELECT
                     AVG((row_data->>:col)::numeric) as avg_val,
                     MIN((row_data->>:col)::numeric) as min_val,
                     MAX((row_data->>:col)::numeric) as max_val,
                     SUM((row_data->>:col)::numeric) as sum_val
-                FROM dataset_data 
-                WHERE dataset_id = :dataset_id 
+                FROM dataset_data
+                WHERE dataset_id = :dataset_id
                 AND row_data->>:col ~ '^[0-9.+-]+$'
             """), {"dataset_id": dataset_id, "col": col}).fetchone()
-
             if agg.avg_val is not None:
                 numeric_results[col] = {
                     "avg": round(float(agg.avg_val), 2),
@@ -145,28 +138,23 @@ def answer_with_sql(question: str, db: Session, dataset_id: int) -> str:
 
     if numeric_results:
         if any(kw in q for kw in ["среднее", "средняя", "mean", "average"]):
-            lines = [f"`{col}`: **{data['avg']}**" for col,
-                     data in numeric_results.items()]
-            return "📊 Средние значения:\n" + "\n".join(lines)
+            lines = [f"`{col}`: **{data['avg']}**" for col, data in numeric_results.items()]
+            return "Средние значения:\n" + "\n".join(lines)
         elif any(kw in q for kw in ["максимум", "макс", "max"]):
-            lines = [f"`{col}`: **{data['max']}**" for col,
-                     data in numeric_results.items()]
-            return "📈 Максимумы:\n" + "\n".join(lines)
+            lines = [f"`{col}`: **{data['max']}**" for col, data in numeric_results.items()]
+            return "Максимумы:\n" + "\n".join(lines)
         elif any(kw in q for kw in ["минимум", "мин", "min"]):
-            lines = [f"`{col}`: **{data['min']}**" for col,
-                     data in numeric_results.items()]
-            return "📉 Минимумы:\n" + "\n".join(lines)
+            lines = [f"`{col}`: **{data['min']}**" for col, data in numeric_results.items()]
+            return "Минимумы:\n" + "\n".join(lines)
         elif any(kw in q for kw in ["сумма", "sum", "total"]):
-            lines = [f"`{col}`: **{data['sum']}**" for col,
-                     data in numeric_results.items()]
-            return "💰 Суммы:\n" + "\n".join(lines)
+            lines = [f"`{col}`: **{data['sum']}**" for col, data in numeric_results.items()]
+            return "Суммы:\n" + "\n".join(lines)
         lines = []
         for col, data in numeric_results.items():
-            lines.append(
-                f"`{col}`: avg={data['avg']}, min={data['min']}, max={data['max']}")
-        return "📈 Полная статистика:\n" + "\n".join(lines)
+            lines.append(f"`{col}`: avg={data['avg']}, min={data['min']}, max={data['max']}")
+        return "Полная статистика:\n" + "\n".join(lines)
 
-    return f"ℹ️ Датасет: **{dataset.name}**\n📊 Строк: {dataset.row_count}\n📋 Колонки: {', '.join(columns[:5])}..."
+    return f"Датасет: **{dataset.name}**\nСтрок: {dataset.row_count}\nКолонки: {', '.join(columns[:5])}..."
 
 
 def answer_with_ai(
@@ -187,22 +175,17 @@ def answer_with_ai(
         "NEVER use Chinese, Japanese, or any other language characters. Only use the detected language."
     )
 
-    dataset_context = f"""
-Датасет: {dataset_summary.get('name')}
-Строк: {dataset_summary.get('row_count')}
-Колонок: {dataset_summary.get('column_count')}
-Колонки: {', '.join(dataset_summary.get('columns', []))}
-
-Числовая статистика:
-{format_averages(dataset_summary.get('averages', {}))}
-
-Топ категорий:
-{format_categories(dataset_summary.get('top_categories', {}))}
-"""
+    dataset_context = (
+        f"Датасет: {dataset_summary.get('name')}\n"
+        f"Строк: {dataset_summary.get('row_count')}\n"
+        f"Колонок: {dataset_summary.get('column_count')}\n"
+        f"Колонки: {', '.join(dataset_summary.get('columns', []))}\n\n"
+        f"Числовая статистика:\n{format_averages(dataset_summary.get('averages', {}))}\n\n"
+        f"Топ категорий:\n{format_categories(dataset_summary.get('top_categories', {}))}\n"
+    )
 
     messages = [
-        {"role": "system", "content": system_prompt +
-            "\n\nДанные:\n" + dataset_context}
+        {"role": "system", "content": system_prompt + "\n\nДанные:\n" + dataset_context}
     ]
 
     for msg in history_rest[-10:]:
@@ -224,9 +207,7 @@ def format_averages(averages: dict) -> str:
         return "нет числовых данных"
     lines = []
     for col, stats in averages.items():
-        lines.append(
-            f"  {col}: среднее={stats.get('mean')}, мин={stats.get('min')}, макс={stats.get('max')}"
-        )
+        lines.append(f"  {col}: среднее={stats.get('mean')}, мин={stats.get('min')}, макс={stats.get('max')}")
     return "\n".join(lines)
 
 
@@ -242,44 +223,29 @@ def format_categories(categories: dict) -> str:
 
 def generate_report(dataset_summary: dict, lang: str = "ru") -> dict:
     lang_name = "Russian" if lang == "ru" else "English"
-    system_prompt = f"""You are a professional business analyst.
-You are given dataset statistics. Generate a business report.
-ALWAYS write all text content (title, summary, findings, recommendations, risks) in {lang_name}.
+    system_prompt = (
+        f"You are a professional business analyst.\n"
+        f"You are given dataset statistics. Generate a business report.\n"
+        f"ALWAYS write all text content (title, summary, findings, recommendations, risks) in {lang_name}.\n\n"
+        f"Respond ONLY with valid JSON, no markdown, no explanations. Format:\n"
+        '{{\n'
+        '  "title": "report title",\n'
+        '  "summary": "brief 2-3 sentence summary",\n'
+        '  "findings": ["finding 1", "finding 2", "finding 3"],\n'
+        '  "recommendations": ["recommendation 1", "recommendation 2"],\n'
+        '  "risks": ["risk 1", "risk 2"]\n'
+        '}}'
+    )
 
-Respond ONLY with valid JSON, no markdown, no explanations. Format:
-{{
-  "title": "report title",
-  "summary": "brief 2-3 sentence summary",
-  "findings": [
-    "finding 1",
-    "finding 2",
-    "finding 3"
-  ],
-  "recommendations": [
-    "recommendation 1",
-    "recommendation 2"
-  ],
-  "risks": [
-    "risk 1",
-    "risk 2"
-  ]
-}}"""
-
-    dataset_context = f"""
-Датасет: {dataset_summary.get('name')}
-Строк: {dataset_summary.get('row_count')}
-Колонок: {dataset_summary.get('column_count')}
-Колонки: {', '.join(dataset_summary.get('columns', []))}
-
-Числовая статистика:
-{format_averages(dataset_summary.get('averages', {}))}
-
-Топ категорий:
-{format_categories(dataset_summary.get('top_categories', {}))}
-
-Пропущенные значения:
-{format_missing(dataset_summary.get('missing_values', {}))}
-"""
+    dataset_context = (
+        f"Датасет: {dataset_summary.get('name')}\n"
+        f"Строк: {dataset_summary.get('row_count')}\n"
+        f"Колонок: {dataset_summary.get('column_count')}\n"
+        f"Колонки: {', '.join(dataset_summary.get('columns', []))}\n\n"
+        f"Числовая статистика:\n{format_averages(dataset_summary.get('averages', {}))}\n\n"
+        f"Топ категорий:\n{format_categories(dataset_summary.get('top_categories', {}))}\n\n"
+        f"Пропущенные значения:\n{format_missing(dataset_summary.get('missing_values', {}))}\n"
+    )
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -294,8 +260,7 @@ Respond ONLY with valid JSON, no markdown, no explanations. Format:
     raw_text = response.choices[0].message.content
 
     try:
-        clean = raw_text.strip().removeprefix(
-            "```json").removeprefix("```").removesuffix("```").strip()
+        clean = raw_text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         parsed = json.loads(clean)
     except Exception:
         parsed = {
@@ -316,8 +281,7 @@ def format_missing(missing: dict) -> str:
     lines = []
     for col, m in missing.items():
         if m.get("missing_count", 0) > 0:
-            lines.append(
-                f"  {col}: {m['missing_count']} пропусков ({m['missing_percent']}%)")
+            lines.append(f"  {col}: {m['missing_count']} пропусков ({m['missing_percent']}%)")
     return "\n".join(lines) if lines else "пропусков нет"
 
 
@@ -331,8 +295,7 @@ def answer_with_sql_raw(question: str, db: Session, dataset_id: int) -> dict:
 
     # Row count
     if any(kw in q for kw in ["сколько строк", "count", "количество строк"]):
-        result["data"]["row_count"] = db.query(DatasetData).filter(
-            DatasetData.dataset_id == dataset_id).count()
+        result["data"]["row_count"] = db.query(DatasetData).filter(DatasetData.dataset_id == dataset_id).count()
         return result
 
     # Missing values
@@ -341,7 +304,7 @@ def answer_with_sql_raw(question: str, db: Session, dataset_id: int) -> dict:
         for col in columns[:8]:
             try:
                 cnt = db.execute(text("""
-                    SELECT COUNT(*) FROM dataset_data 
+                    SELECT COUNT(*) FROM dataset_data
                     WHERE dataset_id = :id AND (row_data->>:col IS NULL OR row_data->>:col = '' OR row_data->>:col = 'null')
                 """), {"id": dataset_id, "col": col}).scalar()
                 if cnt > 0:
@@ -353,46 +316,43 @@ def answer_with_sql_raw(question: str, db: Session, dataset_id: int) -> dict:
             result["data"]["missing_values"] = missing
             return result
 
-
-    # Unique types / categories  ← ФИКС
     # Unique types / categories
-if any(kw in q for kw in ["тип", "типов", "типы", "категор", "вид", "видов", "уникаль", "unique", "distinct"]):
-    unique_values = {}
-    for col in columns:
-        try:
-            rows = db.execute(text("""
-                SELECT DISTINCT row_data->>:col as val
-                FROM dataset_data
-                WHERE dataset_id = :id AND row_data->>:col IS NOT NULL
-                ORDER BY val
-                LIMIT 50
-            """), {"id": dataset_id, "col": col}).fetchall()
-            if rows:
-                vals = [r.val for r in rows if r.val]
-                non_numeric = [v for v in vals if not v.replace(
-                    '.', '').replace('-', '').isdigit()]
-                if non_numeric:
-                    unique_values[col] = {
-                        "count": len(vals),
-                        "values": non_numeric[:20]
-                    }
-        except Exception:
-            db.rollback()
-            continue
-    if unique_values:
-        result["data"]["unique_values"] = unique_values
-        return result
+    if any(kw in q for kw in ["тип", "типов", "типы", "категор", "вид", "видов", "уникаль", "unique", "distinct"]):
+        unique_values = {}
+        for col in columns:
+            try:
+                rows = db.execute(text("""
+                    SELECT DISTINCT row_data->>:col as val
+                    FROM dataset_data
+                    WHERE dataset_id = :id AND row_data->>:col IS NOT NULL
+                    ORDER BY val
+                    LIMIT 50
+                """), {"id": dataset_id, "col": col}).fetchall()
+                if rows:
+                    vals = [r.val for r in rows if r.val]
+                    non_numeric = [v for v in vals if not v.replace('.', '').replace('-', '').isdigit()]
+                    if non_numeric:
+                        unique_values[col] = {
+                            "count": len(vals),
+                            "values": non_numeric[:20]
+                        }
+            except Exception:
+                db.rollback()
+                continue
+        if unique_values:
+            result["data"]["unique_values"] = unique_values
+            return result
 
     # Numeric aggregations
     numeric_stats = {}
     for col in columns[:5]:
         try:
             stats = db.execute(text("""
-                SELECT 
+                SELECT
                     COALESCE(AVG((row_data->>:col)::numeric), 0) as avg,
                     COALESCE(MIN((row_data->>:col)::numeric), 0) as minv,
                     COALESCE(MAX((row_data->>:col)::numeric), 0) as maxv
-                FROM dataset_data 
+                FROM dataset_data
                 WHERE dataset_id = :id AND row_data->>:col ~ '^[0-9.-]+$' AND row_data->>:col IS NOT NULL
             """), {"id": dataset_id, "col": col}).fetchone()
 
@@ -415,10 +375,10 @@ if any(kw in q for kw in ["тип", "типов", "типы", "категор", 
 
 def answer_with_ai_explain(question: str, sql_data: dict, dataset_summary: dict, chat_history: list) -> str:
     """AI explains raw SQL results naturally."""
-    sql_context = f"""
-SQL Results: {question}
-{json.dumps(sql_data['data'], indent=2, ensure_ascii=False)}
-"""
+    sql_context = (
+        f"SQL Results: {question}\n"
+        f"{json.dumps(sql_data['data'], indent=2, ensure_ascii=False)}\n"
+    )
 
     has_system = chat_history and chat_history[0].get("role") == "system"
     lang_instruction = chat_history[0]["content"] if has_system else (
