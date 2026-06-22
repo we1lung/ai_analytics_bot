@@ -48,10 +48,6 @@ def chat_with_data(
     history_rows.reverse()
     chat_history = [{"role": r.role, "content": r.content} for r in history_rows]
 
-    # Автоопределение языка по тексту текущего сообщения.
-    # Эвристика: если есть кириллица — русский, иначе английский.
-    # Не используем LLM для этого — дёшево, быстро, без побочных эффектов
-    # на сам ответ (модель раньше начинала комментировать переключение языка).
     detected_lang = "ru" if detect_language(request.question) == "ru" else "en"
     lang_name = "Russian" if detected_lang == "ru" else "English"
 
@@ -73,12 +69,11 @@ def chat_with_data(
         sql_data = answer_with_sql_raw(question=request.question, db=db, dataset_id=request.dataset_id)
         
         if sql_data:
-            # Для генерации ответа используем модифицированную историю с system prompt
             sql_explanation = answer_with_ai_explain(
                 question=request.question, 
                 sql_data=sql_data, 
                 dataset_summary=get_sql_summary(db, request.dataset_id, dataset),
-                chat_history=chat_history_with_system  # Передаем обновленный контекст
+                chat_history=chat_history_with_system
             )
             answer = sql_explanation
             answer_type = "sql+ai"
@@ -88,7 +83,6 @@ def chat_with_data(
     else:
         dataset_summary = get_sql_summary(db, request.dataset_id, dataset)
         try:
-            # Для обычной модели ИИ передаем измененную историю с жестким правилом по языку
             answer = answer_with_ai(request.question, dataset_summary, chat_history_with_system)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
@@ -182,7 +176,7 @@ def get_sql_summary(db: Session, dataset_id: int, dataset: Dataset) -> dict:
                 }
                 continue
         except Exception:
-            pass
+            db.rollback()
         try:
             top = db.execute(text("""
                 SELECT row_data->>:col, COUNT(*) as cnt
@@ -196,6 +190,6 @@ def get_sql_summary(db: Session, dataset_id: int, dataset: Dataset) -> dict:
                 summary["top_categories"][col] = [
                     {"value": str(r[0]), "count": int(r.cnt)} for r in top
                 ]
-        except:
-            pass
+        except Exception:
+            db.rollback()
     return summary
