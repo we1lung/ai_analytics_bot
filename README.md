@@ -61,10 +61,6 @@ GROQ_API_KEY=your_groq_api_key
 JWT_SECRET=your_secret_key
 ```
 
-## Скриншоты
-
-*(вставь сюда 2-3 скриншота дашборда и AI-чата — это самое важное для README)*
-
 ## Автор
 
 Айдар Бу — [GitHub](https://github.com/we1lung) · [LinkedIn](https://www.linkedin.com/in/veilung-aidar-bu-4306b7362/)
